@@ -9,6 +9,11 @@ using Avalonia.VisualTree;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using Xunit;
+using Xunit.Sdk;
+using Pointer = Avalonia.Input.Pointer;
 
 namespace Avalonia.HeadlessTestKit;
 
@@ -16,9 +21,13 @@ namespace Avalonia.HeadlessTestKit;
 /// DSL helper class for writing headless Avalonia tests.
 /// Provides fluent methods for UI interactions and assertions.
 /// </summary>
-public class Ui
+/// <remarks>
+/// Initializes a new instance of the <see cref="Ui"/> class.
+/// </remarks>
+/// <param name="window">The window to interact with.</param>
+public class Ui(Window window)
 {
-    private readonly Window _window;
+    private readonly Window _window = window ?? throw new ArgumentNullException(nameof(window));
     private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
     private readonly int _settleDelayMs = 10;
 
@@ -27,51 +36,42 @@ public class Ui
     /// </summary>
     public bool IsValidationMode { get; set; }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Ui"/> class.
-    /// </summary>
-    /// <param name="window">The window to interact with.</param>
-    public Ui(Window window)
-    {
-        _window = window ?? throw new ArgumentNullException(nameof(window));
-    }
-
     #region Click Operations
 
-    /// <summary>
-    /// Performs a left mouse click on the specified element.
-    /// </summary>
+    /// <summary>Performs a left mouse click on the specified element.</summary>
     /// <param name="id">The AutomationId or selector of the element.</param>
     public void Click(string id)
     {
-        var control = FindControl(id);
-        
-        if (IsValidationMode)
-        {
-            // In validation mode we just ensure the control can be found.
+        Control control = this.FindControl(id);
+        if (this.IsValidationMode)
             return;
-        }
-        
-        // Special handling for buttons - invoke the click directly
         if (control is Button button)
         {
-            button.Focus();
-            ProcessUiEvents();
-            
-            // Simulate click by raising the Click event
-            var clickMethod = typeof(Button).GetMethod("OnClick", 
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            clickMethod?.Invoke(button, null);
-            
-            ProcessUiEvents();
-            return;
+            button.Focus(NavigationMethod.Unspecified, KeyModifiers.None);
+            this.ProcessUiEvents();
+            typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke((object)button, null);
+            this.ProcessUiEvents();
         }
-        
-        var point = GetCenterPoint(control);
-        RaisePointerEvent(control, point, PointerEventType.Press);
-        RaisePointerEvent(control, point, PointerEventType.Release);
-        ProcessUiEvents();
+        else
+        {
+            if (window != null)
+            { //this also cilcks on the button, but is more reliable
+                var elementPosition = control.TranslatePoint(new Point(), _window);
+                if (!elementPosition.HasValue)
+                    throw new InvalidOperationException($"Control '{id}' could not be translated to window coordinates.");                
+                _window.MouseDown(elementPosition.Value, MouseButton.Left);
+                _window.MouseUp(elementPosition.Value, MouseButton.Left);
+            }
+            else
+            {
+                Point centerPoint = GetCenterPoint(control);
+                this.RaisePointerEvent(control, centerPoint, Ui.PointerEventType.Press);
+                this.RaisePointerEvent(control, centerPoint, Ui.PointerEventType.Release);
+                this.ProcessUiEvents();
+            }
+        }
     }
+
 
     /// <summary>
     /// Performs a right mouse click on the specified element.
@@ -81,13 +81,13 @@ public class Ui
     {
         var control = FindControl(id);
         var point = GetCenterPoint(control);
-        
+
         if (IsValidationMode)
         {
             // Ensure control lookup and coordinate calculation succeed, but do not send events.
             return;
         }
-        
+
         RaisePointerEvent(control, point, PointerEventType.Press, rightButton: true);
         RaisePointerEvent(control, point, PointerEventType.Release, rightButton: true);
         ProcessUiEvents();
@@ -101,13 +101,13 @@ public class Ui
     {
         var control = FindControl(id);
         var point = GetCenterPoint(control);
-        
+
         if (IsValidationMode)
         {
             // Ensure control lookup and coordinate calculation succeed, but do not send events.
             return;
         }
-        
+
         RaisePointerEvent(control, point, PointerEventType.Press);
         RaisePointerEvent(control, point, PointerEventType.Release);
         RaisePointerEvent(control, point, PointerEventType.Press, clickCount: 2);
@@ -123,13 +123,13 @@ public class Ui
     {
         var control = FindControl(id);
         var point = GetCenterPoint(control);
-        
+
         if (IsValidationMode)
         {
             // Ensure control lookup and coordinate calculation succeed, but do not send events.
             return;
         }
-        
+
         RaisePointerEvent(control, point, PointerEventType.Move);
         ProcessUiEvents();
     }
@@ -146,29 +146,35 @@ public class Ui
     public void TypeText(string id, string text)
     {
         var control = FindControl(id);
-        
-        if (IsValidationMode)
+        if (control is not null)
         {
-            // Ensure control lookup succeeds, but do not send text input events.
-            return;
-        }
-        
-        // Focus the control first
-        control.Focus();
-        ProcessUiEvents();
-
-        // Type each character
-        foreach (var ch in text)
-        {
-            var args = new TextInputEventArgs
+            if (IsValidationMode)
             {
-                Text = ch.ToString(),
-                RoutedEvent = InputElement.TextInputEvent
-            };
-            control.RaiseEvent(args);
-        }
+                // Ensure control lookup succeeds, but do not send text input events.
+                return;
+            }
 
-        ProcessUiEvents();
+            // Focus the control first
+            control.Focus();
+            ProcessUiEvents();
+
+            // Type each character
+            foreach (var ch in text)
+            {
+                var args = new TextInputEventArgs
+                {
+                    Text = ch.ToString(),
+                    RoutedEvent = InputElement.TextInputEvent
+                };
+                control.RaiseEvent(args);
+            }
+
+            ProcessUiEvents();
+        }
+        else
+        {
+            throw new Exception($"Assert failed for '{id}': Element doesn't exsist");
+        }
     }
 
     /// <summary>
@@ -193,7 +199,7 @@ public class Ui
             RoutedEvent = InputElement.KeyDownEvent,
             Key = key
         };
-        
+
         _window.RaiseEvent(args);
         ProcessUiEvents();
     }
@@ -253,7 +259,7 @@ public class Ui
     public void SelectItem(string id, string itemText)
     {
         var control = FindControl(id);
-        
+
         if (control is ComboBox comboBox)
         {
             SelectComboBoxItem(comboBox, itemText);
@@ -266,7 +272,7 @@ public class Ui
         {
             throw new InvalidOperationException($"Control with id '{id}' is not a ComboBox or ListBox");
         }
-        
+
         ProcessUiEvents();
     }
 
@@ -278,13 +284,13 @@ public class Ui
             comboBox.Focus();
             ProcessUiEvents();
         }
-        
+
         // Try to find the item by text in the Items collection
         for (int i = 0; i < comboBox.Items.Count; i++)
         {
             var item = comboBox.Items[i];
             var itemTextContent = GetItemText(item);
-            
+
             if (itemTextContent.Equals(itemText, StringComparison.OrdinalIgnoreCase))
             {
                 if (!IsValidationMode)
@@ -295,7 +301,7 @@ public class Ui
                 return;
             }
         }
-        
+
         // If not found in Items, try to find in the visual tree
         var listBox = comboBox.GetVisualDescendants().OfType<ListBox>().FirstOrDefault();
         if (listBox != null)
@@ -304,7 +310,7 @@ public class Ui
             {
                 var item = listBox.Items[i];
                 var itemTextContent = GetItemText(item);
-                
+
                 if (itemTextContent.Equals(itemText, StringComparison.OrdinalIgnoreCase))
                 {
                     if (!IsValidationMode)
@@ -316,7 +322,7 @@ public class Ui
                 }
             }
         }
-        
+
         throw new ArgumentException($"Item '{itemText}' not found in ComboBox '{AutomationProperties.GetAutomationId(comboBox) ?? comboBox.Name ?? "unnamed"}'");
     }
 
@@ -328,13 +334,13 @@ public class Ui
             listBox.Focus();
             ProcessUiEvents();
         }
-        
+
         // Try to find the item by text in the Items collection
         for (int i = 0; i < listBox.Items.Count; i++)
         {
             var item = listBox.Items[i];
             var itemTextContent = GetItemText(item);
-            
+
             if (itemTextContent.Equals(itemText, StringComparison.OrdinalIgnoreCase))
             {
                 if (!IsValidationMode)
@@ -345,11 +351,11 @@ public class Ui
                 return;
             }
         }
-        
+
         throw new ArgumentException($"Item '{itemText}' not found in ListBox '{AutomationProperties.GetAutomationId(listBox) ?? listBox.Name ?? "unnamed"}'");
     }
 
-    private string GetItemText(object? item)
+    private static string GetItemText(object? item)
     {
         return item switch
         {
@@ -373,12 +379,14 @@ public class Ui
     public void AssertText(string id, string expected)
     {
         var control = FindControl(id);
+
         var actual = GetTextContent(control);
 
         if (actual != expected)
         {
             throw new Exception($"Assert failed for '{id}': Expected '{expected}', but got '{actual}'");
         }
+
     }
 
     /// <summary>
@@ -389,7 +397,7 @@ public class Ui
     public void AssertChecked(string id, bool? expected)
     {
         var control = FindControl(id);
-        
+
         if (control is ToggleButton toggle)
         {
             if (toggle.IsChecked != expected)
@@ -401,6 +409,7 @@ public class Ui
         {
             throw new InvalidOperationException($"Control '{id}' is not a toggle button");
         }
+
     }
 
     /// <summary>
@@ -410,11 +419,12 @@ public class Ui
     public void AssertVisible(string id)
     {
         var control = FindControl(id);
-        
+
         if (!control.IsVisible)
         {
             throw new Exception($"Assert failed for '{id}': Element is not visible");
         }
+
     }
 
     /// <summary>
@@ -424,12 +434,52 @@ public class Ui
     public void AssertEnabled(string id)
     {
         var control = FindControl(id);
-        
+
         if (!control.IsEnabled)
         {
             throw new Exception($"Assert failed for '{id}': Element is not enabled");
         }
+
     }
+    /// <summary>
+    /// Asserts that the specified element is not enabled.
+    /// </summary>
+    /// <param name="id">The AutomationId or selector of the element.</param>
+    public void AssertNotEnabled(string id)
+    {
+        var control = FindControl(id);
+
+        if (!control.IsEnabled)
+        {
+            throw new Exception($"Assert failed for '{id}': Element is enabled");
+        }
+
+    }
+    /// <summary>
+    /// Überprüft, ob eine benutzerdefinierte Vergleichsfunktion für zwei Werte des gleichen Typs wahr ergibt, und wirft andernfalls eine Ausnahme.
+    /// </summary>
+    /// <typeparam name="T">Der Datentyp der zu vergleichenden Werte.</typeparam>
+    /// <param name="left">Der linke Wert für den Vergleich (z. B. der tatsächliche Wert).</param>
+    /// <param name="right">Der rechte Wert für den Vergleich (z. B. der erwartete Wert).</param>
+    /// <param name="comparison">Die Funktion, die die Logik für den Vergleich der beiden Werte enthält.</param>
+    /// <param name="message">Die benutzerdefinierte Fehlermeldung, die im Falle eines Fehlschlags ausgegeben wird.</param>
+    /// <exception cref="ArgumentNullException">Wird geworfen, wenn die <paramref name="comparison"/>-Funktion <see langword="null"/> ist.</exception>
+    /// <exception cref="Exception">Wird geworfen, wenn der Vergleich fehlschlägt (falsch ergibt).</exception>
+    public static void AssertTrue<T>(T left, T right, Func<T, T, bool> comparison, string message = "Der Vergleich schlug fehl.")
+    {
+        if (comparison != null)
+        {
+            if (!comparison(left, right))
+            {
+                throw new Exception($"Assert.True Vergleichsfehler ({typeof(T).Name}): {message}");
+            }
+        }
+        else
+        {
+            throw new ArgumentNullException(nameof(comparison));
+        }
+    }
+
 
     #endregion
 
@@ -522,7 +572,7 @@ public class Ui
             return control;
 
         // Try tree path parsing
-        if (id.Contains("/") || id.Contains("["))
+        if (id.Contains('/') || id.Contains('['))
         {
             control = FindByTreePath(_window, id);
             if (control != null)
@@ -534,14 +584,14 @@ public class Ui
             $"Tree path resolution failed in headless mode may indicate visual tree differences.");
     }
 
-    private Control? FindByAutomationId(Control root, string automationId)
+    private static Control? FindByAutomationId(Control root, string automationId)
     {
         if (AutomationProperties.GetAutomationId(root) == automationId)
             return root;
 
         foreach (var child in root.GetVisualChildren())
         {
-            var result = FindByAutomationId(child as Control, automationId);
+            var result = FindByAutomationId((Control)child, automationId);
             if (result != null)
                 return result;
         }
@@ -549,7 +599,7 @@ public class Ui
         return null;
     }
 
-    private Control? FindByName(Control root, string name)
+    private static Control? FindByName(Control root, string name)
     {
         if (root.Name == name)
             return root;
@@ -564,7 +614,7 @@ public class Ui
         return null;
     }
 
-    private Control? FindByTreePath(Control root, string path)
+    private static Control? FindByTreePath(Control root, string path)
     {
         // Simplified tree path parsing: Type[index]/Type[index]/...
         var parts = path.Split('/');
@@ -577,7 +627,7 @@ public class Ui
                 return null;
             }
 
-            var match = System.Text.RegularExpressions.Regex.Match(part, @"(\w+)\[(\d+)\]");
+            var match = Regex.Match(part, @"(\w+)\[(\d+)\]");
             if (match.Success)
             {
                 var typeName = match.Groups[1].Value;
@@ -654,7 +704,7 @@ public class Ui
     /// <param name="typeName">The type name to search for.</param>
     /// <param name="targetIndex">The target index (used as a hint).</param>
     /// <returns>The found control or null if not found.</returns>
-    private Control? FindElementInSubtree(Control root, string typeName, int targetIndex)
+    private static Control? FindElementInSubtree(Control root, string typeName, int targetIndex)
     {
         // Collect all descendants of the target type
         var candidates = new List<Control>();
@@ -683,7 +733,7 @@ public class Ui
     /// <param name="root">The root control to search from.</param>
     /// <param name="typeName">The type name to search for.</param>
     /// <param name="results">The list to populate with results.</param>
-    private void CollectDescendantsOfType(Control root, string typeName, List<Control> results)
+    private static void CollectDescendantsOfType(Control root, string typeName, List<Control> results)
     {
         // Check if the root itself matches
         if (root.GetType().Name == typeName)
@@ -705,7 +755,7 @@ public class Ui
     /// <param name="root">The root control to search from.</param>
     /// <param name="typeName">The type name to search for.</param>
     /// <returns>The found control or null if not found.</returns>
-    private Control? FindDescendantByTypeName(Control root, string typeName)
+    private static Control? FindDescendantByTypeName(Control root, string typeName)
     {
         // Check if the root itself matches
         if (root.GetType().Name == typeName)
@@ -726,7 +776,7 @@ public class Ui
         return null;
     }
 
-    private List<string> GetAllAutomationIds(Control root)
+    private static List<string> GetAllAutomationIds(Control root)
     {
         var ids = new List<string>();
         var automationId = AutomationProperties.GetAutomationId(root);
@@ -762,7 +812,7 @@ public class Ui
         }
     }
 
-    private Point GetCenterPoint(Control control)
+    private static Point GetCenterPoint(Control control)
     {
         var bounds = control.Bounds;
         if (bounds.Width == 0 || bounds.Height == 0)
@@ -772,7 +822,7 @@ public class Ui
         return new Point(bounds.Width / 2, bounds.Height / 2);
     }
 
-    private string GetTextContent(Control control)
+    private static string GetTextContent(Control control)
     {
         return control switch
         {
@@ -861,7 +911,9 @@ public class Ui
 /// </summary>
 public class ControlNotFoundException : Exception
 {
+    /// <param name="message">send message if emty.</param>
     public ControlNotFoundException(string message) : base(message)
     {
+        throw new Exception(message);
     }
 }

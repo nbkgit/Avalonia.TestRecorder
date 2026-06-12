@@ -8,17 +8,27 @@ namespace Avalonia.TestRecorder.CodeGen;
 /// <summary>
 /// Generates C# test code from recorded steps.
 /// </summary>
-public sealed class TestCodeGenerator
+/// <remarks>
+/// Initialisiert eine neue Instanz der <see cref="TestCodeGenerator"/>-Klasse mit den angegebenen Codegenerierungsoptionen und dem Anwendungsnamen.
+/// </remarks>
+/// <param name="options">Die Konfigurationsoptionen für den Codegenerierungsprozess.</param>
+/// <param name="appName">Der Name der Anwendung, für die der Testcode generiert wird.</param>
+public sealed class TestCodeGenerator(CodegenOptions options, string appName)
 {
-    private readonly CodegenOptions _options;
-    private readonly string _appName;
+    private readonly CodegenOptions _options = options;
+    private readonly string _appName = appName;
 
-    public TestCodeGenerator(CodegenOptions options, string appName)
-    {
-        _options = options;
-        _appName = appName;
-    }
-
+    /// <summary>
+    /// Generiert den vollständigen Quellcode für eine Testklasse basierend auf den aufgezeichneten Schritten, dem Szenarionamen und der aktuellen Fensterinstanz.
+    /// </summary>
+    /// <remarks>
+    /// Die Methode lädt ein Template und ersetzt Platzhalter wie Namespace, Klassenname, Testmethode und die Testschritte. 
+    /// Der Zugriff auf den <see cref="Avalonia.StyledElement.DataContext"/> des Fensters erfolgt thread-sicher über den UI-Thread, um Cross-Thread-Ausnahmen zu vermeiden.
+    /// </remarks>
+    /// <param name="steps">Eine Liste der aufgezeichneten Interaktionsschritte, die im Test ausgeführt werden sollen.</param>
+    /// <param name="scenarioName">Der Name des Szenarios, der für die Benennung der Testklasse und -methode verwendet wird.</param>
+    /// <param name="window">Das aktuelle Anwendungsfenster, aus dem Typen- und DataContext-Informationen extrahiert werden.</param>
+    /// <returns>Der fertig generierte C#-Testcode als Zeichenkette (String).</returns>
     public string Generate(IEnumerable<RecordedStep> steps, string scenarioName, Window window)
     {
         var template = LoadTemplate();
@@ -60,7 +70,7 @@ public sealed class TestCodeGenerator
             .Replace("{Steps}", stepsCode);
     }
 
-    private string GenerateWindowInitializationCode(string windowTypeName, string dataContextTypeName)
+    private static string GenerateWindowInitializationCode(string windowTypeName, string dataContextTypeName)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"        var window = new {windowTypeName}");
@@ -77,13 +87,13 @@ public sealed class TestCodeGenerator
         return sb.ToString();
     }
 
-    private string FormatTypeName(string typeName)
+    private static string FormatTypeName(string typeName)
     {
         // Handle generic types by escaping them properly for C#
         return typeName.Replace("+", ".");
     }
 
-    private string GenerateStepsCode(IEnumerable<RecordedStep> steps)
+    private static string GenerateStepsCode(IEnumerable<RecordedStep> steps)
     {
         var sb = new StringBuilder();
         foreach (var step in steps)
@@ -97,13 +107,13 @@ public sealed class TestCodeGenerator
     /// Generates the C# code line for a single recorded step.
     /// Used by both test file generation and UI previews to keep logic in one place.
     /// </summary>
-    public string GenerateStepCode(RecordedStep step)
+    public static string GenerateStepCode(RecordedStep step)
     {
         // For previews we don't need leading indentation
         return GenerateStepLine(step).TrimStart();
     }
 
-    private string GenerateStepLine(RecordedStep step)
+    private static string GenerateStepLine(RecordedStep step)
     {
         var warning = step.Warning != null ? $" // {step.Warning}" : "";
         var intend = "        ";
@@ -124,7 +134,7 @@ public sealed class TestCodeGenerator
             _                      => $"{intend}// Unknown step type: {step.Type} Selector: {step.Selector} Parameter: {step.Parameter}"
         };
     }
-    private string EscapeString(string str)
+    private static string EscapeString(string str)
     {
         return str.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
     }
@@ -151,7 +161,7 @@ public sealed class TestCodeGenerator
         return reader.ReadToEnd();
     }
 
-    private string GetDefaultXUnitTemplate()
+    private static string GetDefaultXUnitTemplate()
     {
         return @"using Avalonia.Headless.XUnit;
 using Avalonia.HeadlessTestKit;
@@ -175,7 +185,7 @@ public partial class {ClassName}
 ";
     }
 
-    private string GetDefaultNUnitTemplate()
+    private static string GetDefaultNUnitTemplate()
     {
         return @"using Avalonia.Headless.NUnit;
 using Avalonia.HeadlessTestKit;

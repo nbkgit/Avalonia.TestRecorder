@@ -9,23 +9,19 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.VisualTree;
 using Avalonia.Automation;
+using Avalonia.Data;
 
 namespace Avalonia.TestRecorder;
 
 /// <summary>
 /// Validates that recorded steps can successfully find and interact with target elements.
 /// </summary>
-public class StepValidator
+public class StepValidator(Window window, ILogger? logger = null)
 {
-    private readonly Window _window;
-    private readonly ILogger? _logger;
-    
-    public StepValidator(Window window, ILogger? logger = null)
-    {
-        _window = window;
-        _logger = logger;
-    }
-    
+    private readonly Window _window = window;
+    private readonly ILogger? _logger = logger;
+    private bool  bo;
+
     /// <summary>
     /// Validates that a recorded step can successfully execute and that the found control matches the original.
     /// </summary>
@@ -82,6 +78,9 @@ public class StepValidator
                 case StepType.AssertEnabled:
                     ui.AssertEnabled(step.Selector);
                     break;
+                case StepType.AssertNotEnabled:
+                    ui.AssertNotEnabled(step.Selector);
+                    break;
                 case StepType.SelectItem:
                     ui.SelectItem(step.Selector, step.Parameter ?? string.Empty);
                     break;
@@ -91,6 +90,11 @@ public class StepValidator
                 case StepType.Scroll:
                     var (deltaX, deltaY) = ParseScrollParameter(step.Parameter);
                     ui.Scroll(step.Selector, deltaX, deltaY);
+                    break;
+                case StepType.AssertTrue:
+                    Ui.AssertTrue<string>(step.Parameter ?? string.Empty, step.Parameter ?? string.Empty,
+                        (left, right) => left == right,
+                        "Der Vergleich schlug fehl.");
                     break;
                 default:
                     return new ValidationResult(false, $"Unknown step type: {step.Type}");
@@ -105,7 +109,7 @@ public class StepValidator
         }
     }
 
-    private (double deltaX, double deltaY) ParseScrollParameter(string? parameter)
+    private static (double deltaX, double deltaY) ParseScrollParameter(string? parameter)
     {
         if (string.IsNullOrWhiteSpace(parameter))
         {
@@ -135,7 +139,7 @@ public class StepValidator
     /// <param name="control1">First control to compare.</param>
     /// <param name="control2">Second control to compare.</param>
     /// <returns>True if controls are equivalent, false otherwise.</returns>
-    private bool AreControlsEquivalent(Control? control1, Control? control2)
+    private static bool AreControlsEquivalent(Control? control1, Control? control2)
     {
         if (control1 == null && control2 == null)
             return true;
@@ -163,7 +167,7 @@ public class StepValidator
     /// </summary>
     /// <param name="control">The control to get the path for.</param>
     /// <returns>A string representing the control's path in the visual tree.</returns>
-    private string GetControlPath(Control control)
+    private static string GetControlPath(Control control)
     {
         var pathParts = new List<string>();
         var current = control as Visual;
@@ -201,27 +205,35 @@ public class StepValidator
 /// <summary>
 /// Result of step validation.
 /// </summary>
-public class ValidationResult
+/// <remarks>
+/// Initialisiert eine neue Instanz der <see cref="ValidationResult"/>-Klasse mit dem Erfolgsstatus und einer optionalen Fehlermeldung.
+/// </remarks>
+/// <param name="isSuccess"><see langword="true"/>, wenn die Validierung erfolgreich war; andernfalls <see langword="false"/>.</param>
+/// <param name="errorMessage">Die Beschreibung des Fehlers, oder <see langword="null"/>, wenn kein Fehler vorliegt.</param>
+public class ValidationResult(bool isSuccess, string? errorMessage)
 {
-    public bool IsSuccess { get; }
-    public string? ErrorMessage { get; }
-    
-    public ValidationResult(bool isSuccess, string? errorMessage)
-    {
-        IsSuccess = isSuccess;
-        ErrorMessage = errorMessage;
-    }
+    /// <summary>
+    /// Ruft einen Wert ab, der angibt, ob die Operation oder Überprüfung erfolgreich war.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/>, wenn die Operation erfolgreich abgeschlossen wurde; andernfalls <see langword="false"/>.
+    /// </value>
+    public bool IsSuccess { get; } = isSuccess;
+    /// <summary>
+    /// Ruft die Fehlermeldung ab, wenn die Operation oder Überprüfung fehlgeschlagen ist.
+    /// </summary>
+    /// <value>
+    /// Eine Zeichenkette (String), die den Fehler beschreibt, oder <see langword="null"/>, wenn die Operation erfolgreich war.
+    /// </value>
+    public string? ErrorMessage { get; } = errorMessage;
 }
 
 /// <summary>
 /// Specialized UI helper for validation that exposes protected APIs from Ui.
 /// </summary>
-internal class ValidationUi : Ui
+internal class ValidationUi(Window window) : Ui(window)
 {
-    public ValidationUi(Window window) : base(window)
-    {
-    }
-    
+
     /// <summary>
     /// Public method to expose the FindControl method for validation purposes.
     /// </summary>

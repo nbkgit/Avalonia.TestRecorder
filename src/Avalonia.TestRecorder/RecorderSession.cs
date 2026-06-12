@@ -23,7 +23,7 @@ public sealed class RecorderSession : IRecorderSession
     private readonly RecorderOptions _options;
     private readonly SelectorResolver _selectorResolver;
     private readonly TestCodeGenerator _codeGenerator;
-    private readonly List<RecordedStep> _steps = new();
+    private readonly List<RecordedStep> _steps = [];
     private readonly List<IAssertValueExtractor> _extractors;
     private readonly ILogger? _logger;
     private readonly StepValidator _stepValidator; // Added validator
@@ -41,13 +41,28 @@ public sealed class RecorderSession : IRecorderSession
     private Action? _onClearCallback;
     private Action? _onMinimizeRestoreCallback;
 
+    /// <inheritdoc/>
     public RecorderState State => _state;
 
     /// <summary>
     /// Gets the current step count.
     /// </summary>
     public int GetStepCount() => _steps.Count;
-
+    /// <summary>
+    /// Initialisiert eine neue Instanz der <see cref="RecorderSession"/>-Klasse für ein bestimmtes Anwendungsfenster.
+    /// </summary>
+    /// <remarks>
+    /// Diese Methode bereitet die Aufzeichnungssitzung vor, indem sie:
+    /// <list type="bullet">
+    /// <item><description>Logger, Selektor-Resolver und Schritt-Validatoren einrichtet.</description></item>
+    /// <item><description>Den <see cref="TestCodeGenerator"/> mit dem ermittelten Anwendungsnamen instanziiert.</description></item>
+    /// <item><description>Eingebaute sowie benutzerdefinierte Wert-Extraktoren (<see cref="IAssertValueExtractor"/>) registriert.</description></item>
+    /// <item><description>Einen Timer (500ms Debounce) für die Zusammenfassung aufeinanderfolgender Texteingaben konfiguriert.</description></item>
+    /// <item><description>Die globalen Event-Handler an das Zielfenster bindet.</description></item>
+    /// </list>
+    /// </remarks>
+    /// <param name="window">Das zu überwachende Avalonia-Fenster, auf dem die Benutzerinteraktionen aufgezeichnet werden.</param>
+    /// <param name="options">Die Konfigurationsoptionen für den Recorder, einschließlich Logging und Codegenerierung.</param>
     public RecorderSession(Window window, RecorderOptions options)
     {
         _window = window;
@@ -60,11 +75,7 @@ public sealed class RecorderSession : IRecorderSession
         _codeGenerator = new TestCodeGenerator(options.Codegen, appName);
 
         // Initialize extractors
-        _extractors = new List<IAssertValueExtractor>(BuiltInExtractors.GetDefault());
-        foreach (var extractor in options.AssertExtractors)
-        {
-            _extractors.Add(extractor);
-        }
+        _extractors = [.. BuiltInExtractors.GetDefault(), .. options.AssertExtractors];
 
         // Text input coalescing timer
         _textInputTimer = new System.Timers.Timer(500); // 500ms debounce
@@ -74,7 +85,12 @@ public sealed class RecorderSession : IRecorderSession
         AttachEventHandlers();
         _logger?.LogInformation("RecorderSession initialized for window: {Window}", window.Title);
     }
-
+    /// <summary>
+    /// Startet die Aufzeichnung der Sitzung, sofern diese sich im inaktiven Zustand befindet.
+    /// </summary>
+    /// <remarks>
+    /// Wenn der aktuelle Zustand <see cref="RecorderState.Off"/> ist, wird der Status auf <see cref="RecorderState.Recording"/> gesetzt und der Start im Logger vermerkt. Bereits laufende oder pausierte Aufzeichnungen werden ignoriert.
+    /// </remarks>
     public void Start()
     {
         if (_state == RecorderState.Off)
@@ -83,7 +99,12 @@ public sealed class RecorderSession : IRecorderSession
             _logger?.LogInformation("Recording started");
         }
     }
-
+    /// <summary>
+    /// Stoppt die aktuelle Aufzeichnungssitzung und versetzt sie in den inaktiven Zustand.
+    /// </summary>
+    /// <remarks>
+    /// Wenn die Aufzeichnung aktiv oder pausiert ist, werden ausstehende Texteingaben über <see cref="FlushTextInput"/> verarbeitet, der Status auf <see cref="RecorderState.Off"/> zurückgesetzt und das Ende im Logger vermerkt.
+    /// </remarks>
     public void Stop()
     {
         if (_state != RecorderState.Off)
@@ -150,13 +171,24 @@ public sealed class RecorderSession : IRecorderSession
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         return $"{appName}.{_options.ScenarioName}.{timestamp}.g.cs";
     }
-
+    /// <summary>
+    /// Verarbeitet verbleibende Eingaben und exportiert die aufgezeichneten Schritte als fertigen C#-Testcode.
+    /// </summary>
+    /// <remarks>
+    /// Die Methode stellt durch den Aufruf von <see cref="FlushTextInput"/> sicher, dass alle gepufferten Texteingaben vor dem Export verarbeitet werden. Anschließend generiert der interne Codegenerator die vollständige Testklasse.
+    /// </remarks>
+    /// <returns>Der fertig generierte C#-Testcode als Zeichenkette (String).</returns>
     public string ExportTestCode()
     {
         FlushTextInput();
         return _codeGenerator.Generate(_steps, _options.ScenarioName, _window);
     }
-
+    /// <summary>
+    /// Gibt alle von der <see cref="RecorderSession"/> verwendeten Ressourcen frei und meldet die Ereignishandler ab.
+    /// </summary>
+    /// <remarks>
+    /// Diese Methode entfernt die Event-Handler vom überwachten Fenster, gibt den Timer für das Texteingabe-Debouncing frei und protokolliert den Abschluss der Sitzung im Logger.
+    /// </remarks>
     public void Dispose()
     {
         DetachEventHandlers();
@@ -474,7 +506,7 @@ public sealed class RecorderSession : IRecorderSession
     /// <summary>
     /// Extracts text from a control.
     /// </summary>
-    private string? ExtractTextFromControl(Control control)
+    private static  string? ExtractTextFromControl(Control control)
     {
         return control switch
         {
@@ -489,7 +521,7 @@ public sealed class RecorderSession : IRecorderSession
     /// <summary>
     /// Extracts the checked state from a control.
     /// </summary>
-    private bool? ExtractCheckedState(Control control)
+    private static  bool? ExtractCheckedState(Control control)
     {
         return control switch
         {
@@ -586,10 +618,17 @@ public sealed class RecorderSession : IRecorderSession
     {
         _onMinimizeRestoreCallback = callback;
     }
-
+    /// <summary>
+    /// Generiert eine Code-Vorschau für einen einzelnen, spezifischen Aufzeichnungsschritt.
+    /// </summary>
+    /// <remarks>
+    /// Diese Methode delegiert den Aufruf an den internen Codegenerator, um die Repräsentation eines einzelnen Interaktionsschritts als ausführbaren C#-Code zu erzeugen, ohne das gesamte Test-Template zu rendern.
+    /// </remarks>
+    /// <param name="step">Der aufgezeichnete Schritt, für den die Code-Vorschau generiert werden soll.</param>
+    /// <returns>Die C#-Code-Vorschau des Einzelschritts als Zeichenkette (String).</returns>
     public string GenerateStepCodePreview(RecordedStep step)
     {
-        return _codeGenerator.GenerateStepCode(step);
+        return TestCodeGenerator.GenerateStepCode(step);
     }
 
     /// <summary>
@@ -802,7 +841,7 @@ public sealed class RecorderSession : IRecorderSession
         }
     }
 
-    private string GetSelectedItemText(object? selectedItem)
+    private static string GetSelectedItemText(object? selectedItem)
     {
         if (selectedItem == null)
             return string.Empty;
@@ -817,7 +856,7 @@ public sealed class RecorderSession : IRecorderSession
         };
     }
 
-    private Control? FindControlWithAutomationId(Control startControl)
+    private static Control? FindControlWithAutomationId(Control startControl)
     {
         var current = startControl as Visual;
 

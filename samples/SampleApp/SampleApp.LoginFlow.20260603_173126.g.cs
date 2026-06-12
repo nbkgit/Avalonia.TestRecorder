@@ -7,29 +7,6 @@ namespace SampleApp.Tests;
 public partial class Recorded_LoginFlow_Tests
 {
     [AvaloniaFact]
-    public void Scenario_LoginFlow_20251211_131040()
-    {
-        // Initialize window with DataContext
-        var window = new SampleApp.Views.MainWindow
-        {
-            DataContext = new SampleApp.ViewModels.MainWindowViewModel(),
-        };
-        window.Show();
-
-        
-        var ui = new Ui(window);
-        
-        ui.Click("basic_usernameField"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
-        ui.TypeText("basic_usernameField", "123"); // VALIDATION OK
-        ui.Click("basic_passwordField"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
-        ui.TypeText("basic_passwordField", "123"); // VALIDATION OK
-        ui.Click("basic_statusLabel"); // VALIDATION OK
-        ui.Click("basic_countryCombo"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
-        ui.SelectItem("basic_countryCombo", "Canada"); // VALIDATION OK
-        ui.Click("basic_submitButton"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
-        ui.AssertText("basic_statusLabel", "Form submitted successfully"); // VALIDATION OK
-    }
-    [AvaloniaFact]
     public void Scenario_LoginFlow_20260603_173129()
     {
         // Initialize window with DataContext
@@ -39,9 +16,9 @@ public partial class Recorded_LoginFlow_Tests
         };
         window.Show();
 
-
+        
         var ui = new Ui(window);
-
+        
         ui.Click("basic_usernameField"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
         ui.TypeText("basic_usernameField", "a"); // VALIDATION OK
         ui.TypeText("basic_usernameField", "b"); // VALIDATION OK
@@ -51,7 +28,7 @@ public partial class Recorded_LoginFlow_Tests
         ui.TypeText("basic_passwordField", "b"); // VALIDATION OK
         ui.TypeText("basic_passwordField", "c"); // VALIDATION OK
         ui.Click("basic_countryCombo"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
-        //ui.Click("ContentPresenter_NoId"); // ERROR: No stable selector available; VALIDATION FAILED: Control not found: 'ContentPresenter_NoId'. Available AutomationIds: basic_usernameField, basic_passwordField, basic_countryCombo, basic_subscribeCheck, basic_genderMale, basic_genderFemale, basic_submitButton, basic_statusLabel. Tree path resolution failed in headless mode may indicate visual tree differences.
+        ui.Click("ContentPresenter_NoId"); // ERROR: No stable selector available; VALIDATION FAILED: Control not found: 'ContentPresenter_NoId'. Available AutomationIds: basic_usernameField, basic_passwordField, basic_countryCombo, basic_subscribeCheck, basic_genderMale, basic_genderFemale, basic_submitButton, basic_statusLabel. Tree path resolution failed in headless mode may indicate visual tree differences.
         ui.SelectItem("basic_countryCombo", "Germany"); // VALIDATION OK
         ui.Click("basic_genderMale"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.
         ui.AssertNotEnabled("basic_submitButton"); // VALIDATION FAILED: Control mismatch: Found control doesn't match the original control. Multiple controls may have the same AutomationId.

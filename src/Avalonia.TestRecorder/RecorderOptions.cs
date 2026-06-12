@@ -38,7 +38,7 @@ public sealed class RecorderOptions
     /// <summary>
     /// Gets the list of assertion value extractors.
     /// </summary>
-    public IList<IAssertValueExtractor> AssertExtractors { get; } = new List<IAssertValueExtractor>();
+    public IList<IAssertValueExtractor> AssertExtractors { get; } = [];
 
     /// <summary>
     /// Gets or sets whether to show the overlay panel.
@@ -142,7 +142,13 @@ public sealed class CodegenOptions
 /// </summary>
 public enum TestFramework
 {
+    /// <summary>
+    /// Xunit is one selectale Test Framework.
+    /// </summary>
     XUnit,
+    /// <summary>
+    /// XNUunit is one selectale Test Framework.
+    /// </summary>
     NUnit
 }
 
